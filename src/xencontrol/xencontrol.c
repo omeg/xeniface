@@ -1,6 +1,8 @@
 #define INITGUID
 #include <windows.h>
+#if defined(_DEBUG) || !defined(QWT)
 #include <winioctl.h>
+#endif
 #include <setupapi.h>
 #include <stdlib.h>
 #include <assert.h>
