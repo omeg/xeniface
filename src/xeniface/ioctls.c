@@ -56,8 +56,10 @@ __CaptureUserBuffer(
 
     Status = STATUS_NO_MEMORY;
     TempBuffer = __AllocatePoolWithTag(NonPagedPool, Length, XENIFACE_POOL_TAG);
-    if (TempBuffer == NULL)
+    if (TempBuffer == NULL) {
+        *CapturedBuffer = NULL;
         return STATUS_INSUFFICIENT_RESOURCES;
+    }
 
     Status = STATUS_SUCCESS;
 
@@ -79,7 +81,7 @@ __CaptureUserBuffer(
 
 VOID
 __FreeCapturedBuffer(
-    __in  PVOID CapturedBuffer
+    __in_opt  PVOID CapturedBuffer
     )
 {
     if (CapturedBuffer != NULL) {
@@ -149,7 +151,7 @@ fail1:
 _IRQL_requires_(PASSIVE_LEVEL) // EvtchnFree calls KeFlushQueuedDpcs
 VOID
 XenIfaceCleanup(
-    __in  PXENIFACE_FDO Fdo,
+    __in      PXENIFACE_FDO Fdo,
     __in_opt  PFILE_OBJECT  FileObject
     )
 {
@@ -245,12 +247,13 @@ XenIfaceIoctl(
     PVOID               Buffer = Irp->AssociatedIrp.SystemBuffer;
     ULONG               InLen = Stack->Parameters.DeviceIoControl.InputBufferLength;
     ULONG               OutLen = Stack->Parameters.DeviceIoControl.OutputBufferLength;
+    ULONG               ControlCode = Stack->Parameters.DeviceIoControl.IoControlCode;
 
     status = STATUS_DEVICE_NOT_READY;
     if (Fdo->InterfacesAcquired == FALSE)
         goto done;
 
-    switch (Stack->Parameters.DeviceIoControl.IoControlCode) {
+    switch (ControlCode) {
         // store
     case IOCTL_XENIFACE_STORE_READ:
         status = IoctlStoreRead(Fdo, (PCHAR)Buffer, InLen, OutLen, &Irp->IoStatus.Information);
@@ -306,16 +309,32 @@ XenIfaceIoctl(
         status = IoctlGnttabPermitForeignAccess(Fdo, Stack->Parameters.DeviceIoControl.Type3InputBuffer, InLen, OutLen, Irp);
         break;
 
+    case IOCTL_XENIFACE_GNTTAB_PERMIT_FOREIGN_ACCESS_V2: // this is a METHOD_NEITHER IOCTL
+        status = IoctlGnttabPermitForeignAccess(Fdo, Stack->Parameters.DeviceIoControl.Type3InputBuffer, InLen, OutLen, Irp);
+        break;
+
     case IOCTL_XENIFACE_GNTTAB_REVOKE_FOREIGN_ACCESS:
-        status = IoctlGnttabRevokeForeignAccess(Fdo, Buffer, InLen, OutLen);
+        status = IoctlGnttabRevokeForeignAccess(Fdo, Buffer, InLen, OutLen, ControlCode);
+        break;
+
+    case IOCTL_XENIFACE_GNTTAB_REVOKE_FOREIGN_ACCESS_V2:
+        status = IoctlGnttabRevokeForeignAccess(Fdo, Buffer, InLen, OutLen, ControlCode);
         break;
 
     case IOCTL_XENIFACE_GNTTAB_MAP_FOREIGN_PAGES: // this is a METHOD_NEITHER IOCTL
         status = IoctlGnttabMapForeignPages(Fdo, Stack->Parameters.DeviceIoControl.Type3InputBuffer, InLen, OutLen, Irp);
         break;
 
+    case IOCTL_XENIFACE_GNTTAB_MAP_FOREIGN_PAGES_V2: // this is a METHOD_NEITHER IOCTL
+        status = IoctlGnttabMapForeignPages(Fdo, Stack->Parameters.DeviceIoControl.Type3InputBuffer, InLen, OutLen, Irp);
+        break;
+
     case IOCTL_XENIFACE_GNTTAB_UNMAP_FOREIGN_PAGES:
-        status = IoctlGnttabUnmapForeignPages(Fdo, Buffer, InLen, OutLen);
+        status = IoctlGnttabUnmapForeignPages(Fdo, Buffer, InLen, OutLen, ControlCode);
+        break;
+
+    case IOCTL_XENIFACE_GNTTAB_UNMAP_FOREIGN_PAGES_V2:
+        status = IoctlGnttabUnmapForeignPages(Fdo, Buffer, InLen, OutLen, ControlCode);
         break;
 
         // suspend
